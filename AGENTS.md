@@ -93,9 +93,10 @@ feature on NiiVue's public demo images, or offline on synthetic data from `synth
 `.github/workflows/publish.yml` (Trusted Publishing, no tokens) runs every check in `ci.yml`
 first, then:
 
-- **push to main** -> development pre-release on TestPyPI (`0.1.1.devN`), then installs it
-  from TestPyPI and imports it.
+- **push to main** -> development pre-release on PyPI (`0.1.1.devN`; pip installs it only
+  with `--pre` or an exact pin), then installs it from PyPI and imports it.
 - **tag `vX.Y.ZrcN` / `aN` / `bN` on main** -> pre-release on PyPI + GitHub pre-release.
 - **tag `vX.Y.Z` on main** -> release on PyPI + GitHub release.
 
-Publishing is public and irreversible: never push a tag without the maintainer's go-ahead.
+Publishing is public and irreversible: every push to main and every tag uploads to PyPI;
+never push either without the maintainer's go-ahead.

@@ -228,7 +228,7 @@ Releases are published from GitHub Actions with Trusted Publishing (no API token
 
 | Event | Result |
 |---|---|
-| push to `main` | all checks, then `0.1.1.devN` on [TestPyPI](https://test.pypi.org/project/reflex-niivue/) and an install check from there |
+| push to `main` | all checks, then the development pre-release `0.1.1.devN` on PyPI (`pip install --pre reflex-niivue`) and an install check |
 | tag `v0.2.0rc1` (or `a1`, `b1`) on main | all checks, then a pre-release on PyPI (`pip install --pre reflex-niivue`) and a GitHub pre-release |
 | tag `v0.2.0` on main | all checks, then the release on PyPI and a GitHub release |
 
@@ -236,9 +236,6 @@ Releases are published from GitHub Actions with Trusted Publishing (no API token
 git tag v0.1.0rc1 && git push origin v0.1.0rc1   # pre-release
 git tag v0.1.0 && git push origin v0.1.0         # release
 ```
-
-Try a TestPyPI build: `uv pip install --no-deps --index-url https://test.pypi.org/simple/
-reflex-niivue==0.1.1.dev3`, then `uv pip install reflex`.
 
 ## License
 
