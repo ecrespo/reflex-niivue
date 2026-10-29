@@ -1,0 +1,170 @@
+name: Publish
+
+# Every push to main: all checks, then a development pre-release on TestPyPI
+#   (N commits after v0.1.0 -> 0.1.1.devN; before the first tag -> 0.0.1.devN).
+# A tag vX.Y.Z (or vX.Y.ZrcN / aN / bN) on a commit of main: all checks, then PyPI and a
+#   GitHub release (marked pre-release for rc/a/b). The version is taken from the tag.
+#     git tag v0.1.0rc1 && git push origin v0.1.0rc1   # pre-release on PyPI
+#     git tag v0.1.0 && git push origin v0.1.0         # release
+# Run by hand (Actions > Publish > Run workflow) to publish the current main to TestPyPI.
+#
+# No tokens: both indexes use Trusted Publishing (OIDC). Configure once on PyPI and on
+# TestPyPI a (pending) publisher for owner "ecrespo", repository "reflex-niivue", workflow
+# "publish.yml" and environment "pypi" / "testpypi" respectively.
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# One publish of main at a time; a newer push supersedes a queued one. Tags never cancel.
+concurrency:
+  group: publish-${{ github.ref }}
+  cancel-in-progress: ${{ github.ref == 'refs/heads/main' }}
+
+jobs:
+  checks:
+    # Lint, type-check, unit tests on 3.11/3.14, build, demo compile, browser checks.
+    uses: ./.github/workflows/ci.yml
+
+  build:
+    needs: checks
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      prerelease: ${{ steps.version.outputs.prerelease }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+        with:
+          python-version: "3.13"
+
+      - name: The commit is on main
+        run: git merge-base --is-ancestor "$GITHUB_SHA" origin/main
+
+      - name: Build
+        run: uv build
+
+      - name: The distributions are complete and render on PyPI
+        run: |
+          unzip -l dist/*.whl | grep -q 'reflex_niivue/niivue.pyi$'
+          unzip -l dist/*.whl | grep -q 'reflex_niivue/assets/niivue.jsx$'
+          # NiiVue comes from npm at app build time; nothing of it is vendored.
+          if unzip -l dist/*.whl | grep -qiE '\.(js|mjs)$'; then exit 1; fi
+          uvx twine check --strict dist/*
+
+      - name: The wheel installs and imports in a clean environment
+        run: |
+          uv venv /tmp/smoke --python 3.11
+          uv pip install --python /tmp/smoke dist/*.whl
+          cd /tmp && /tmp/smoke/bin/python -c "from reflex_niivue import niivue, colormaps; niivue.view(); print(len(colormaps()))"
+
+      - id: version
+        name: The version matches the ref
+        run: |
+          wheel=(dist/*.whl)
+          version=$(basename "${wheel[0]}" | cut -d- -f2)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          if [[ "$version" =~ (a|b|rc|\.dev)[0-9]+$ ]]; then prerelease=true; else prerelease=false; fi
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            if [[ "$version" != "${GITHUB_REF_NAME#v}" ]]; then
+              echo "::error::built $version but the tag is $GITHUB_REF_NAME"
+              exit 1
+            fi
+          elif [[ "$version" != *.dev* ]]; then
+            echo "::error::main must build a .devN version (got $version); is HEAD tagged?"
+            exit 1
+          fi
+          echo "### reflex-niivue $version" >> "$GITHUB_STEP_SUMMARY"
+
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist
+          path: dist/
+
+  testpypi:
+    # Pre-publish: every commit of main as a development release.
+    if: github.ref == 'refs/heads/main'
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: testpypi
+      url: https://test.pypi.org/project/reflex-niivue/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+        with:
+          repository-url: https://test.pypi.org/legacy/
+          # A re-run of the same commit rebuilds the same version.
+          skip-existing: true
+
+  testpypi-install:
+    # The pre-release installs from TestPyPI (dependencies from PyPI) and imports.
+    needs: [build, testpypi]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: astral-sh/setup-uv@c18668ad3cf93ea998bef934396af7bb5c839dc7 # v10.2.0
+      - name: Install reflex-niivue ${{ needs.build.outputs.version }} from TestPyPI
+        env:
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          uv venv /tmp/smoke --python 3.11
+          # Only reflex-niivue comes from TestPyPI; its dependencies come from PyPI.
+          for attempt in 1 2 3 4 5 6; do
+            if uv pip install --python /tmp/smoke --no-deps \
+                --index-url https://test.pypi.org/simple/ "reflex-niivue==$VERSION"; then break; fi
+            [[ $attempt == 6 ]] && exit 1
+            sleep 30  # the index may take a moment to serve a new upload
+          done
+          /tmp/smoke/bin/python -c "import importlib.metadata as m; print('\n'.join(m.requires('reflex-niivue')))" > /tmp/requirements.txt
+          uv pip install --python /tmp/smoke -r /tmp/requirements.txt
+          cd /tmp && /tmp/smoke/bin/python -c "from reflex_niivue import niivue; niivue.view(); print(niivue.NIIVUE_VERSION)"
+
+  pypi:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build
+    runs-on: ubuntu-latest
+    # Add required reviewers to this environment (Settings > Environments) to approve each
+    # release by hand.
+    environment:
+      name: pypi
+      url: https://pypi.org/project/reflex-niivue/${{ needs.build.outputs.version }}/
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+      - uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
+
+  release:
+    needs: [build, pypi]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: dist
+          path: dist/
+      - name: GitHub release with the distributions
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PRERELEASE: ${{ needs.build.outputs.prerelease }}
+        run: |
+          flags=(--generate-notes)
+          if [[ "$PRERELEASE" == true ]]; then flags+=(--prerelease); fi
+          gh release create "$GITHUB_REF_NAME" dist/* --repo "$GITHUB_REPOSITORY" \
+            --title "$GITHUB_REF_NAME" "${flags[@]}"

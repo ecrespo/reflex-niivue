@@ -1,0 +1,15 @@
+reflex-niivue
+Copyright 2026 Ernesto Crespo
+
+This product is licensed under the Apache License, Version 2.0 (see LICENSE).
+
+This product does not include NiiVue's code: the Reflex app that uses the component installs
+@niivue/niivue from npm (the version pinned in src/reflex_niivue/niivue.py). NiiVue is
+
+  https://github.com/niivue/niivue
+  Copyright (c) 2021, Niivue
+  Licensed under the BSD 2-Clause License
+
+The demo app (niivue_demo/, not part of the distributed package) displays images and meshes
+downloaded at run time from NiiVue's demo collection (https://niivue.com/demos/images/ and
+https://github.com/niivue/niivue-demo-images), which carry their own licenses and citations.

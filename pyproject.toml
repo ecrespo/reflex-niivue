@@ -1,0 +1,84 @@
+[project]
+name = "reflex-niivue"
+dynamic = ["version"]
+description = "Reflex component wrapping NiiVue, the WebGL2 viewer for medical images (NIfTI, NRRD, DICOM, meshes, tractography, drawings)."
+readme = "README.md"
+license = "Apache-2.0"
+license-files = ["LICENSE", "NOTICE"]
+requires-python = ">=3.11"
+authors = [{ name = "Ernesto Crespo", email = "ecrespo@gmail.com" }]
+keywords = ["reflex", "reflex-component", "niivue", "nifti", "medical-imaging", "neuroimaging", "webgl2"]
+classifiers = [
+    "Programming Language :: Python :: 3",
+    "Topic :: Scientific/Engineering :: Medical Science Apps.",
+    "Topic :: Scientific/Engineering :: Visualization",
+]
+dependencies = ["reflex>=0.10.1"]
+
+[project.urls]
+Repository = "https://github.com/ecrespo/reflex-niivue"
+NiiVue = "https://github.com/niivue/niivue"
+
+[dependency-groups]
+dev = [
+    "nibabel>=5.3",
+    "numpy>=2",
+    "pre-commit>=4",
+    "pyright>=1.1.400",
+    "pytest>=8",
+    "pytest-playwright>=0.7",
+    "ruff>=0.12",
+]
+
+[build-system]
+requires = ["hatchling", "uv-dynamic-versioning", "hatch-reflex-pyi"]
+build-backend = "hatchling.build"
+
+[tool.hatch.version]
+# The version comes from the git tag (`v0.1.0` builds 0.1.0).
+source = "uv-dynamic-versioning"
+
+[tool.uv-dynamic-versioning]
+fallback-version = "0.1.0.dev0"
+# Commits after a tag build the next patch as a development release: N commits after v0.1.0
+# build 0.1.1.devN (the pre-releases main publishes to TestPyPI). A tag builds its version.
+bump = true
+# No "+<commit>" local part: PyPI and TestPyPI reject local versions.
+metadata = false
+
+[tool.hatch.build]
+# The .pyi stubs are generated at build time and are not committed.
+artifacts = ["/src/**/*.pyi"]
+# Importing the component (as the stub hook does) links shared assets into ./assets/external.
+exclude = ["**/assets/external"]
+
+[tool.hatch.build.targets.sdist]
+exclude = ["/niivue_demo", "/.github", "/.idea"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/reflex_niivue"]
+
+[tool.hatch.build.hooks.reflex-pyi]
+dependencies = ["ruff", "reflex>=0.10.1"]
+
+[tool.ruff]
+target-version = "py311"
+line-length = 100
+# The .pyi stubs are generated (hatch-reflex-pyi).
+extend-exclude = ["src/reflex_niivue/assets", "*.pyi"]
+
+[tool.ruff.lint]
+select = ["B", "D", "E", "F", "I", "UP", "W"]
+ignore = ["D203", "D213"]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = ["D"]
+"niivue_demo/**" = ["D"]
+
+[tool.pyright]
+include = ["src", "tests"]
+pythonVersion = "3.11"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["browser: needs a Playwright browser and a running demo app"]

@@ -1,0 +1,4 @@
+reflex>=0.10.1
+numpy>=2
+nibabel>=5.3
+-e ..
